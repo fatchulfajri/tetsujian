@@ -1,0 +1,47 @@
+version: "3.9"
+services:
+  # web:
+  #   build: ./web
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - db
+
+  web:
+    build: ./web
+    image: php:8.2-apache
+    container_name: cyber-web
+    ports:
+      - "8080:80"
+    # volumes:
+    #   - ./web:/var/www/html
+    depends_on:
+      - db
+
+  # db:
+  #   image: mysql:5.7
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: root
+  #     MYSQL_DATABASE: vulnapp
+  #   volumes:
+  #     - ./web/db.sql:/docker-entrypoint-initdb.d/db.sql
+
+  db:
+    image: mysql:8.0
+    container_name: cyber-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cyber
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # scoreboard:
+  #   build: ./scoreboard
+  #   ports:
+  #     - "5000:5000"
+  #   depends_on:
+  #     - db
+      
+  linux:
+    build: ./linux
+    tty: true
