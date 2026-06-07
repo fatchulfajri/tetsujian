@@ -2,166 +2,228 @@
 include 'config.php';
 session_start();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nim  = $_POST['nim'];
-    $pass = $_POST['password'];
+$error = '';
+$success = '';
 
-    $q = $conn->query(
-        "SELECT * FROM users WHERE nim='$nim' AND password='$pass'"
-    );
+// Handle Registration
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
+    $nim = trim($_POST['nim']);
+    $name = trim($_POST['name']);
+    $team = trim($_POST['team']);
+    $password = $_POST['password'];
 
-    if ($q && $q->num_rows > 0) {
-        $_SESSION['user'] = $q->fetch_assoc();
-        header("Location: index.php");
-        exit;
+    // Validate inputs
+    if (empty($nim) || empty($name) || empty($team) || empty($password)) {
+        $error = "Semua field harus diisi!";
     } else {
-        $error = "Login gagal!";
+        // Check if NIM already exists
+        $check = $conn->prepare("SELECT id FROM users WHERE nim = ?");
+        $check->bind_param("s", $nim);
+        $check->execute();
+        $result = $check->get_result();
+
+        if ($result->num_rows > 0) {
+            $error = "NIM sudah terdaftar!";
+        } else {
+            // Register new user
+            $stmt = $conn->prepare("INSERT INTO users (nim, name, team, password, role) VALUES (?, ?, ?, ?, 'peserta')");
+            $stmt->bind_param("ssss", $nim, $name, $team, $password);
+
+            if ($stmt->execute()) {
+                $success = "Registrasi berhasil! Silakan login.";
+            } else {
+                $error = "Registrasi gagal. Silakan coba lagi.";
+            }
+        }
+    }
+}
+
+// Handle Login
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
+    $nim = trim($_POST['nim']);
+    $password = $_POST['password'];
+
+    $stmt = $conn->prepare("SELECT * FROM users WHERE nim = ?");
+    $stmt->bind_param("s", $nim);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+
+        // Check password (in production, use password_verify())
+        if ($password === $user['password']) {
+            $_SESSION['user'] = $user;
+
+            // Redirect based on role
+            if ($user['role'] === 'admin') {
+                header("Location: admin/dashboard.php");
+            } else {
+                header("Location: index.php");
+            }
+            exit;
+        } else {
+            $error = "Password salah!";
+        }
+    } else {
+        $error = "NIM tidak ditemukan!";
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Scoreboard</title>
+    <title>CyberUAS - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* Reset dan Base Styling */
         * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        /* Kontainer Form Login (Card) */
-        .login-card {
-            background: #ffffff;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-
-        h2 {
-            color: #2c3e50;
-            font-size: 1.8rem;
-            margin-bottom: 8px;
-            font-weight: 700;
-        }
-
-        .subtitle {
-            color: #7f8c8d;
-            font-size: 0.9rem;
-            margin-bottom: 24px;
-        }
-
-        /* Notifikasi Error */
-        .error-message {
-            background-color: #fde8e8;
-            color: #e74c3c;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            margin-bottom: 20px;
-            border-left: 4px solid #e74c3c;
-            text-align: left;
-        }
-
-        /* Grouping Form Input */
-        .input-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .input-group label {
-            display: block;
-            margin-bottom: 6px;
-            color: #34495e;
-            font-size: 0.85rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1.5px solid #dcdde1;
-            border-radius: 8px;
-            font-size: 1rem;
-            color: #2c3e50;
-            outline: none;
-            transition: all 0.3s ease;
-        }
-
-        /* Efek fokus saat input diklik */
-        .input-group input:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
-        }
-
-        /* Tombol Login */
-        .btn-login {
-            width: 100%;
-            padding: 14px;
-            background-color: #3498db;
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.2s ease, transform 0.1s ease;
-            margin-top: 10px;
-        }
-
-        .btn-login:hover {
-            background-color: #2980b9;
-        }
-
-        .btn-login:active {
-            transform: scale(0.98);
+            font-family: 'Inter', sans-serif;
         }
     </style>
 </head>
-<body>
+<body class="bg-white min-h-screen flex items-center justify-center p-4">
 
-<div class="login-card">
-    <h2>Selamat Datang</h2>
-    <p class="subtitle">Silakan login untuk mengakses akun Anda</p>
+    <!-- Main Container -->
+    <div class="w-full max-w-md">
+        <!-- Logo/Header -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900">CyberUAS</h1>
+            <p class="text-gray-500 mt-1">Platform Pembelajaran Cybersecurity</p>
+        </div>
 
-    <?php if (!empty($error)): ?>
-        <div class="error-message">
-            <?php echo htmlspecialchars($error); ?>
-        </div>
-    <?php endif; ?>
+        <!-- Auth Card -->
+        <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-100">
+                <button onclick="showTab('login')" id="login-tab" class="flex-1 py-3 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 transition-all">
+                    Login
+                </button>
+                <button onclick="showTab('register')" id="register-tab" class="flex-1 py-3 text-sm font-semibold text-gray-500 hover:text-gray-700 transition-all">
+                    Daftar
+                </button>
+            </div>
 
-    <form method="POST">
-        <div class="input-group">
-            <label for="nim">NIM</label>
-            <input type="text" id="nim" name="nim" placeholder="Masukkan NIM Anda" required autocomplete="off">
+            <div class="p-6">
+                <!-- Error Message -->
+                <?php if ($error): ?>
+                <div class="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2">
+                    <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-sm text-red-600"><?php echo htmlspecialchars($error); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <!-- Success Message -->
+                <?php if ($success): ?>
+                <div class="mb-4 p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2">
+                    <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-sm text-green-600"><?php echo htmlspecialchars($success); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <!-- Login Form -->
+                <form id="login-form" method="POST">
+                    <input type="hidden" name="login" value="1">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">NIM</label>
+                            <input type="text" name="nim" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Masukkan NIM Anda">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <input type="password" name="password" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Masukkan password">
+                        </div>
+                        <button type="submit"
+                            class="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                            Masuk
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Register Form -->
+                <form id="register-form" method="POST" class="hidden">
+                    <input type="hidden" name="register" value="1">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">NIM</label>
+                            <input type="text" name="nim" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Masukkan NIM">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
+                            <input type="text" name="name" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Masukkan nama lengkap">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Team</label>
+                            <input type="text" name="team" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Nama team">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <input type="password" name="password" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                                placeholder="Buat password">
+                        </div>
+                        <button type="submit"
+                            class="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                            Daftar Sekarang
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
-        
-        <div class="input-group">
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" placeholder="Masukkan Password" required>
-        </div>
-        
-        <button type="submit" class="btn-login">Masuk Aplikasi</button>
-    </form>
-</div>
+
+        <!-- Footer -->
+        <p class="text-center text-sm text-gray-400 mt-6">
+            © 2026 CyberUAS. Platform Pembelajaran Cybersecurity
+        </p>
+    </div>
+
+    <script>
+        function showTab(tab) {
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const loginTab = document.getElementById('login-tab');
+            const registerTab = document.getElementById('register-tab');
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                loginTab.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+                loginTab.classList.remove('text-gray-500');
+                registerTab.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                registerTab.classList.add('text-gray-500');
+            } else {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+                registerTab.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+                registerTab.classList.remove('text-gray-500');
+                loginTab.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                loginTab.classList.add('text-gray-500');
+            }
+        }
+    </script>
 
 </body>
 </html>
